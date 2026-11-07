@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Heart Animation</title>
+<style>
+:root{color-scheme:dark;--bg:#000}
+html,body{margin:0;height:100%;background:var(--bg);overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const LET='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+let W,H,cols,rows,cw,ch,fs,jit,thr,stars;
+
+function resize(){
+  const d=Math.min(devicePixelRatio||1,2);
+  W=innerWidth;H=innerHeight;cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0);
+  fs=Math.max(9,Math.round(Math.min(W,H)/55));
+  ctx.font='bold '+fs+'px monospace';ctx.textBaseline='top';
+  cw=ctx.measureText('W').width;ch=fs;
+  cols=Math.ceil(W/cw);rows=Math.ceil(H/ch);
+  jit=new Float32Array(cols*rows);thr=new Float32Array(cols*rows);
+  for(let i=0;i<jit.length;i++){jit[i]=0.75+Math.random()*0.5;thr[i]=Math.random();}
+  stars=Array.from({length:70},()=>({x:Math.random(),y:Math.random(),p:Math.random()*6.28,c:'+*.'[Math.floor(Math.random()*3)]}));
+}
+addEventListener('resize',resize);resize();
+
+const ease=p=>p<0?0:p>1?1:p*p*(3-2*p);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const CYCLE=16;
+let tt=11,last=null,lastDraw=0; // شروع از ثانیه ۱۱ (بخش قلب)
+
+// با کلیک روی صفحه انیمیشن دوباره از اولِ بخش قلب ریست میشه
+addEventListener('pointerdown',()=>{tt=11;});
+
+function heartIn(x,y){const a=x*x+y*y-1;return a*a*a-x*x*y*y*y<=0;}
+
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=last==null?0:Math.min((now-last)/1000,0.1);last=now;tt+=dt;
+  if(tt>11+CYCLE)tt=11; // حلقه تکرار بخش قلب
+  if(now-lastDraw<55)return;lastDraw=now;
+
+  const t=tt;
+  const p=1; // زوم نهایی روی حالت بسته
+  const viewH=1.3/16;
+  const camX=0;
+
+  const starA=ease((t-11)/2),heartT=ease((t-11.5)/4);
+  const fade=Math.min(1,(t-11)/0.8);
+
+  ctx.globalAlpha=1;ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  ctx.globalAlpha=fade;
+
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const i=r*cols+c,px=c*cw+cw/2,py=r*ch+ch/2;
+      const nx=(px-W/2)/H,ny=(py-H/2)/H;
+      const x=camX+nx*viewH,y=ny*viewH;
+      let R,G,B,draw=true;
+      const hw=0.85,ax=Math.abs(x);
+      const lid=ax<hw?Math.pow(1-(ax/hw)*(ax/hw),0.9):-1;
+      const hh=lid<0?-1:(y<0?0.3:0.2)*lid;
+      const inEye=lid>=0&&Math.abs(y)<=hh;
+
+      if(inEye){
+        const d=Math.hypot(x,y);
+        if(d<0.11){draw=false;}
+        else if(d<0.27){
+          const k=clamp((d-0.11)/0.16,0,1);
+          const a=Math.atan2(y,x);
+          const f=clamp(0.5+0.5*(Math.sin(a*23)*0.5+Math.sin(a*57+1.3)*0.3+Math.sin(a*11+k*4)*0.2),0,1);
+          const ring=Math.exp(-Math.pow((k-0.35)/0.12,2));
+          R=100+160*f+40*ring;G=65+110*f+30*ring;B=35+55*f+10*ring;
+          if(k>0.8){const s=1-(k-0.8)*3;R*=s;G*=s;B*=s;}
+        }else{
+          const s=0.75+0.25*(1-ax/hw);
+          const edge=1-clamp(Math.abs(y)/(hh+1e-6),0,1);
+          const sh=0.2+0.85*s*(0.75+0.25*edge);
+          R=240*sh;G=235*sh;B=228*sh;
+        }
+      }else{
+        const e=lid<0?Math.hypot(Math.max(ax-hw,0),y):Math.max(Math.abs(y)-hh,0);
+        let dark=1-0.72*Math.exp(-e*8);
+        if(e<0.015&&ax<hw)dark*=0.5;
+        if(y<0)dark*=1-0.75*Math.exp(-e*4.5);
+        const vig=1-0.3*Math.min(1,Math.hypot(x,y)/1.6);
+        R=205*dark*vig;G=148*dark*vig;B=105*dark*vig;
+      }
+
+      // رسم داخل ناحیه قلب (مردمک)
+      if(!draw){
+        if(heartT>0){
+          const s=0.3*(0.2+0.8*heartT)*(1+0.05*Math.sin(now/250));
+          const hx=nx/s,hy=-ny/s+0.15;
+          if(heartIn(hx,hy)&&thr[i]<heartT){
+            const k=1-Math.min(1,Math.hypot(hx,hy-0.3)/1.3);
+            ctx.fillStyle=`rgb(${Math.min(255,190+90*k)|0},${(50+70*k*jit[i])|0},${(110+40*k)|0})`;
+            ctx.fillText(LET[(Math.random()*52)|0],c*cw,r*ch);
+          }
+        }
+        continue;
+      }
+      ctx.fillStyle=`rgb(${Math.min(255,R*jit[i])|0},${Math.min(255,G*jit[i])|0},${Math.min(255,B*jit[i])|0})`;
+      ctx.fillText(LET[(Math.random()*52)|0],c*cw,r*ch);
+    }
+  }
+
+  // ستاره‌های دوروبر قلب
+  if(starA>0){
+    for(const s of stars){
+      const a=starA*(0.5+0.5*Math.sin(now/500+s.p));
+      ctx.globalAlpha=a*fade;ctx.fillStyle='#fff';
+      ctx.fillText(s.c,s.x*W,s.y*H);
+    }
+  }
+  ctx.globalAlpha=1;
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
